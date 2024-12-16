@@ -1,0 +1,19 @@
+#include <Servo.h>
+Servo sa;
+Servo sb;
+void setup() {
+  Serial.begin(9600); // Установите скорость передачи данных
+  sa.attach(9);
+  sb.attach(8);
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n'); // Чтение строки до символа новой строки
+    Serial.println("Received: " + data); // Отправка обратно полученных данных
+    int c = data.toInt();
+    sa.write(c);
+    delay(100);
+    sb.write(c);
+  }
+}
