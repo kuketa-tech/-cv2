@@ -3,53 +3,74 @@ import math
 import cv2
 import keyboard
 import serial
+
 backSub_mog = cv2.createBackgroundSubtractorMOG2()
-arduino_port = '/dev/ttyUSB0'
-baud_rate = 9600  # Скорость передачи данных
-# open camera
-cap = cv2.VideoCapture(0)
+arduino_port = 'COM3'
+cap = cv2.VideoCapture("arm69.mp4")
+
+if not cap.isOpened():
+    print("Ошибка при открытии видеофайла")
+    exit()
+
 c = True
+baud_rate = 9600
 ser = serial.Serial(arduino_port, baud_rate)
-while c ==True:
+time.sleep(2)
+
+while c:
     if keyboard.is_pressed("space"):
         c = False
-    # read image
+
     ret, img = cap.read()
+    if not ret:
+        print("Достигнут конец видео")
+        break
+
     img = cv2.resize(img, (320, 240))
     img = cv2.GaussianBlur(img, (9, 9), 0)
-    imgNoBg =  backSub_mog.apply(img)
-    side = 500
+    imgNoBg = backSub_mog.apply(img)
+
     # show both images
-    imgNoBg =cv2.resize(imgNoBg,(1000, 1000))
-    img =cv2.resize(img,(1000,1000))
+    imgNoBg = cv2.resize(imgNoBg, (1000, 1000))
+    img = cv2.resize(img, (1000, 1000))
     contours, hierarchy = cv2.findContours(imgNoBg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    alpha = beta = None  # Инициализация alpha и beta
+
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         area = cv2.contourArea(contour)
-        if area>20000:
-         cv2.line(img, (0, 500), (x+w, y), (0, 0, 255), thickness=3)
-         cv2.line(img, (0, 1000), (x + w, 1000), (0, 0, 255), thickness=3)
-         w1 = str(x+w)
-         cv2.putText(img, "width:" + " " + w1, (100, 100), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
-         d = w1
-         hight = (1000-y)
-         h1 = str(hight)
-         cv2.putText(img, "hight:" + " " + h1, (100, 400), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
-         pi = math.pi
-         beta1= math.asin((x+w-500)/500)
-         beta = ((beta1*180)/pi)+90
-         alfa1 = math.acos((500-y)/500)
-         alfa = ((alfa1 * 180) / pi) + 90
-         cv2.putText(img, "alfa:" + " " + str(alfa), (100, 700), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
-         cv2.putText(img, "beta:" + " " + str(beta), (100, 600), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
-         data_to_send = alfa
-         ser.write((data_to_send + '\n').encode('utf-8'))
-         time.sleep(1)
-         data_to_send = beta
-         ser.write((data_to_send + '\n').encode('utf-8'))
-         time.sleep(1)
+
+        if area > 20000:
+            cv2.line(img, (0, 500), (x + w, 1000-(y+h)), (0, 0, 255), thickness=3)
+
+
+            w1 = str(x + w)
+            height = (1000 - y)
+            cv2.putText(img, "x,y", (x, y), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, "x,y+h", (x, y+h), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, "x+w,y+h", (x+w, y+h), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, f"w:{w}", (100, 900), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, f"y:{1000-y}", (100, 800), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, f"h:{1000-y}", (700, 700), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            pi = math.pi
+            alpha = round(180 - (math.atan((w - 310) / ((1000-y)-310)) * 180 / pi))
+            beta = round(270 - alpha)
+
+            cv2.putText(img, f"alpha: {alpha}", (100, 700), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+            cv2.putText(img, f"beta: {beta}", (100, 600), cv2.FONT_HERSHEY_TRIPLEX, 3, (0, 0, 255), 3)
+
+    # Отправка и получение данных происходят один раз после обработки контуров
+    if alpha is not None and beta is not None:
+        ser.write(str(alpha).encode() + b'\n')  # Отправка alpha на Arduino
+        response = ser.readline().decode().strip()  # Чтение ответа от Arduino
+        print(f"Ответ от Arduino: {response}")
+        wds = int(response)
+        if wds != alpha:
+            break
     cv2.imshow('result', img)
-    cv2.waitKey(1)
+    if cv2.waitKey(1) & 0xFF == ord('q'):  # обрывка кода
+        break
+
 cap.release()
 cv2.destroyAllWindows()
-print(img.shape)
